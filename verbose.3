@@ -1,0 +1,292 @@
+.TH VERBOSE 3 "2002" "verbose.h" "Library Functions Manual"
+.SH NAME
+verbose.h \- single-header C logging library
+.SH SYNOPSIS
+.nf
+.B #define VERBOSE_IMPLEMENTATION
+.B #include "verbose.h"
+.sp
+.BI "int  verbose_init(int " ts ", int " level ", const char *" filename ");"
+.BI "void verbose_set_level(int " level ");"
+.BI "void verbose_set_tag(const char *" tag ");"
+.BI "int  verbose_also_stderr(int " enable ");"
+.BI "void verbose_log(int " level ", const char *" fmt ", ...);"
+.B  "void verbose_close(void);"
+.fi
+.sp
+Link with
+.IR \-lpthread
+(unless
+.B VERBOSE_NO_THREADS
+is defined).
+.SH DESCRIPTION
+.B verbose.h
+is a single-header C logging library.
+Copy
+.I verbose.h
+into your project and define
+.B VERBOSE_IMPLEMENTATION
+in exactly one translation unit before including it.
+.PP
+Log levels are bitmask flags that can be combined freely with
+.BR | .
+Output goes to a file, to
+.IR stderr ,
+or to both simultaneously.
+When writing to a terminal, level labels are colorised with ANSI codes.
+The library is thread-safe by default via a
+.BR pthread_mutex (3).
+.SH FUNCTIONS
+.SS verbose_init
+.nf
+.BI "int verbose_init(int " ts ", int " level ", const char *" filename ");"
+.fi
+.PP
+Initialises the logger.
+Must be called before any
+.BR verbose_log ()
+call.
+.TP
+.I ts
+.B TS_ON
+to prefix every line with a
+.I YYYY\-MM\-DD HH:MM:SS
+timestamp,
+.B TS_OFF
+to omit it.
+.TP
+.I level
+A bitmask of
+.B VB_*
+flags that selects which log levels are active.
+Only messages whose level bit is set in this mask are written.
+.TP
+.I filename
+Path to a log file opened in append mode.
+If
+.B NULL
+the logger writes to
+.I stderr
+instead.
+.PP
+Returns
+.B 0
+on success or
+.B \-1
+if the file could not be opened.
+.SS verbose_log
+.nf
+.BI "void verbose_log(int " level ", const char *" fmt ", ...);"
+.fi
+.PP
+Emits a log line using printf-style formatting.
+The line is only written when
+.I level
+is set in the active mask.
+.PP
+If
+.B VERBOSE_SOURCE_LOC
+is defined before including the header,
+.B verbose_log
+becomes a macro that automatically injects
+.BR __FILE__ ,
+.BR __LINE__ ,
+and
+.B __func__
+into every line.
+.PP
+When
+.I level
+is
+.B VB_FATAL
+the message is written and then
+.BR exit (1)
+is called.
+.SS verbose_close
+.nf
+.B void verbose_close(void);
+.fi
+.PP
+Flushes and closes the log file (if any).
+Safe to call when logging to
+.IR stderr .
+.SS verbose_set_level
+.nf
+.BI "void verbose_set_level(int " level ");"
+.fi
+.PP
+Replaces the active log-level mask at runtime.
+Thread-safe.
+Useful for toggling debug output in a running process without restarting it.
+.SS verbose_set_tag
+.nf
+.BI "void verbose_set_tag(const char *" tag ");"
+.fi
+.PP
+Sets an optional tag string printed between the level label and the message.
+Pass
+.B NULL
+to clear the tag.
+The tag is truncated to 63 characters.
+.SS verbose_also_stderr
+.nf
+.BI "int verbose_also_stderr(int " enable ");"
+.fi
+.PP
+When the logger was initialised with a file, mirrors all output to
+.I stderr
+as well.
+Pass
+.B 0
+to stop mirroring.
+Has no effect when the logger was not initialised with a file.
+Always returns
+.BR 0 .
+.SH LOG LEVELS
+Log levels are bitmask flags.
+.TS
+tab(@);
+lb lb lb
+l  l  l.
+Flag@Value@Meaning
+_
+VB_DEBUG@0x01@Verbose debug information
+VB_INFO@0x02@General informational messages
+VB_WARN@0x04@Warnings that may need attention
+VB_ERROR@0x08@Errors that should not happen
+VB_FATAL@0x10@Unrecoverable error \(em logs then calls exit(1)
+VB_ALL@0x1F@All of the above
+.TE
+.SH OUTPUT FORMAT
+Each log line follows the pattern:
+.PP
+.RS
+.B [TIMESTAMP] [LEVEL] [TAG] file:line (func) message
+.RE
+.PP
+.TP
+.B TIMESTAMP
+Only present when
+.B TS_ON
+was passed to
+.BR verbose_init ().
+.TP
+.B TAG
+Only present when set via
+.BR verbose_set_tag ().
+.TP
+.B file:line (func)
+Only present when
+.B VERBOSE_SOURCE_LOC
+is defined.
+.PP
+Minimal example (no timestamp, no tag, no source location):
+.PP
+.RS
+.B [WARN ] disk usage above 90%
+.RE
+.PP
+Full example:
+.PP
+.RS
+.B [2026-03-01 14:05:22] [WARN ] [myapp] src/disk.c:88 (check_disk) disk usage above 90%
+.RE
+.PP
+When writing to a terminal, level labels are colourised:
+.TS
+tab(@);
+lb lb
+l  l.
+Level@Colour
+_
+DEBUG@Cyan
+INFO@Green
+WARN@Yellow
+ERROR@Red
+FATAL@Bold red
+.TE
+.SH COMPILE-TIME OPTIONS
+.TP
+.B VERBOSE_IMPLEMENTATION
+Must be defined in exactly one translation unit before including the header
+to emit the implementation.
+.TP
+.B VERBOSE_SOURCE_LOC
+When defined, turns
+.B verbose_log
+into a macro that injects
+.BR __FILE__ ,
+.BR __LINE__ ,
+and
+.B __func__
+automatically.
+.TP
+.B VERBOSE_NO_THREADS
+Disables the
+.BR pthread_mutex (3)
+locking.
+Removes the dependency on
+.BR libpthread .
+Use only in single-threaded programs.
+.SH EXAMPLES
+.SS Log everything to stderr
+.nf
+#define VERBOSE_IMPLEMENTATION
+#include "verbose.h"
+
+int main(void) {
+    verbose_init(TS_ON, VB_ALL, NULL);
+
+    verbose_log(VB_DEBUG, "starting up");
+    verbose_log(VB_INFO,  "ready");
+    verbose_log(VB_WARN,  "something looks off");
+    verbose_log(VB_ERROR, "failed: %s", "disk full");
+
+    verbose_close();
+    return 0;
+}
+.fi
+.SS Log warnings and errors to a file
+.nf
+verbose_init(TS_ON, VB_WARN | VB_ERROR, "/var/log/app.log");
+verbose_log(VB_DEBUG, "filtered out");
+verbose_log(VB_WARN,  "written to file");
+verbose_close();
+.fi
+.SS File with stderr mirror
+.nf
+verbose_init(TS_ON, VB_ALL, "/var/log/app.log");
+verbose_also_stderr(1);
+verbose_log(VB_INFO, "goes to both file and terminal");
+verbose_close();
+.fi
+.SS Tag per subsystem
+.nf
+verbose_init(TS_OFF, VB_ALL, NULL);
+
+verbose_set_tag("http");
+verbose_log(VB_INFO, "GET /index.html 200");
+
+verbose_set_tag("db");
+verbose_log(VB_WARN, "slow query: %dms", 430);
+.fi
+.SS Runtime level change
+.nf
+verbose_set_level(VB_WARN | VB_ERROR);  /* quiet down */
+verbose_set_level(VB_ALL);              /* full verbosity */
+.fi
+.SS Fatal error
+.nf
+if (!config) {
+    verbose_log(VB_FATAL, "failed to load config");
+    /* exit(1) called automatically; line below never reached */
+}
+.fi
+.SH SEE ALSO
+.BR fprintf (3),
+.BR syslog (3),
+.BR pthread_mutex_lock (3)
+.SH AUTHORS
+Ulrik Hørlyk Hjort
+.SH LICENSE
+MIT License.
