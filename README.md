@@ -1,12 +1,12 @@
 # verbose.h
 
-A single-header logging library for C.
+A single header logging library for C.
 
 ---
 
 ## Features
 
-- Single-header
+- Single header
 - Log levels as bitmask flags — combine freely with `|`
 - Optional timestamps
 - Optional source location (`__FILE__`, `__LINE__`, `__func__`)
